@@ -56,12 +56,12 @@ fun FuncScreen(onClose: () -> Unit, requestPerm: () -> Unit) {
                     OutlinedButton(onClick = onClose) { Text("CLOSE") }
                 }
                 TabRow(selectedTabIndex = tab) {
-                    listOf("SHOP", "RADIO", "DEBUG").forEachIndexed { i, t ->
+                    listOf("SHOP", "RADIO", "DISPLAY", "DEBUG").forEachIndexed { i, t ->
                         Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t, fontFamily = Mono) })
                     }
                 }
                 Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    when (tab) { 0 -> ShopTab(); 1 -> RadioTab(); else -> DebugTab(requestPerm) }
+                    when (tab) { 0 -> ShopTab(); 1 -> RadioTab(); 2 -> DisplayTab(); else -> DebugTab(requestPerm) }
                 }
             }
         }
@@ -70,29 +70,16 @@ fun FuncScreen(onClose: () -> Unit, requestPerm: () -> Unit) {
 
 @Composable
 private fun ShopTab() {
-    Text("Earn 1 gem for every new day you open the app.", fontFamily = Mono, fontSize = 12.sp)
+    Text("Earn 1 gem for every message you send or receive, plus 1 for each new day you open the app.", fontFamily = Mono, fontSize = 12.sp)
     MODELS.forEach { m ->
         val owned = m.id in PagerCore.owned
         val equipped = PagerCore.modelId == m.id
         Section(m.name.uppercase()) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                val ps = RoundedCornerShape(10.dp)
-                Column(
-                    Modifier.size(58.dp, 86.dp).background(Brush.verticalGradient(listOf(m.bodyTop, m.bodyBottom)), ps)
-                        .border(1.dp, m.edgeLight, ps).padding(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(5.dp)
-                ) {
-                    Box(Modifier.fillMaxWidth().height(26.dp).background(Brush.verticalGradient(listOf(m.lcdTop, m.lcdBottom)), RoundedCornerShape(3.dp)))
-                    Box(Modifier.fillMaxWidth().weight(1f).background(Brush.verticalGradient(listOf(m.keyTop, m.keyBottom)), RoundedCornerShape(3.dp)))
-                }
+                Thumb(m)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(m.tagline, fontSize = 12.sp)
-                    Text(when (m.feature) {
-                        Feature.LED_COLOR -> "★ Changeable LED colour"
-                        Feature.KB_BACKLIGHT -> "★ Illuminated keyboard"
-                        Feature.LCD_BACKLIGHT -> "★ Amber LCD backlight"
-                        Feature.NONE -> "No extras"
-                    }, fontSize = 11.sp, color = Color(0xFFFFD166), fontFamily = Mono)
+                    Text(m.perks, fontSize = 11.sp, color = Color(0xFFFFD166), fontFamily = Mono)
                 }
             }
             when {
@@ -101,6 +88,48 @@ private fun ShopTab() {
                 else -> Button({ PagerCore.buy(m) }, Modifier.fillMaxWidth(), enabled = PagerCore.gems >= m.price) { Text("BUY  ◆ ${m.price}") }
             }
         }
+    }
+}
+
+@Composable
+private fun Thumb(m: Model) {
+    val ps = RoundedCornerShape(10.dp)
+    val lcd = Brush.verticalGradient(listOf(m.lcdTop, m.lcdBottom))
+    val keys = Brush.verticalGradient(listOf(m.keyTop, m.keyBottom))
+    val body = Brush.verticalGradient(listOf(m.bodyTop, m.bodyBottom))
+    when {
+        m.kb == KB.PAPER -> Row(
+            Modifier.size(58.dp, 86.dp).background(body, ps).border(1.dp, m.edgeLight, ps).padding(5.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Box(Modifier.width(7.dp).fillMaxHeight().background(keys, RoundedCornerShape(3.dp)))
+            Box(Modifier.weight(1f).fillMaxHeight().background(lcd, RoundedCornerShape(2.dp)))
+            Box(Modifier.width(7.dp).fillMaxHeight().background(keys, RoundedCornerShape(3.dp)))
+        }
+        m.landscapeNative -> Column(
+            Modifier.size(90.dp, 58.dp).background(body, ps).border(1.dp, m.edgeLight, ps).padding(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Box(Modifier.fillMaxWidth().height(22.dp).background(lcd, RoundedCornerShape(3.dp)))
+            Box(Modifier.fillMaxWidth().weight(1f).background(keys, RoundedCornerShape(3.dp)))
+        }
+        else -> Column(
+            Modifier.size(58.dp, 86.dp).background(body, ps).border(1.dp, m.edgeLight, ps).padding(6.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Box(Modifier.fillMaxWidth().height(26.dp).background(lcd, RoundedCornerShape(3.dp)))
+            Box(Modifier.fillMaxWidth().weight(1f).background(keys, RoundedCornerShape(3.dp)))
+        }
+    }
+}
+
+@Composable
+private fun DisplayTab() {
+    Section("ORIENTATION") {
+        ToggleRow("Landscape", PagerCore.orientMode == 2) { PagerCore.orientMode = if (it) 2 else 1; PagerCore.saveMeta() }
+        ToggleRow("Follow phone rotation", PagerCore.orientMode == 0) { PagerCore.orientMode = if (it) 0 else 1; PagerCore.saveMeta() }
+        Text("Every pager also has a ROT key on the device itself. The manual switch works even when the phone's rotation lock is on. The CM P1 is built to be held sideways, so equipping it turns the screen landscape.",
+            fontSize = 11.sp, color = Color(0xFF9AA0AA))
     }
 }
 
@@ -167,6 +196,7 @@ private fun DebugTab(requestPerm: () -> Unit) {
         Button({ Mesh.inject("GHOST", "ALL", "Injected broadcast", 3) }, Modifier.fillMaxWidth()) { Text("INJECT BROADCAST") }
         Button({ Mesh.inject("GHOST", PagerCore.callsign, "Injected direct msg", 3) }, Modifier.fillMaxWidth()) { Text("INJECT DIRECT TO ME") }
         OutlinedButton({ Mesh.inject("GHOST", "NOBODY", "Relay test", 2) }, Modifier.fillMaxWidth()) { Text("INJECT RELAY-ONLY") }
+        Button({ Mesh.inject("GHOST", PagerCore.callsign, "", 3, PagerImg.testPattern()) }, Modifier.fillMaxWidth()) { Text("INJECT IMAGE 128x256") }
     }
     Section("GEMS / SHOP") {
         Text("Gems: ${PagerCore.gems}", fontFamily = Mono)
@@ -177,7 +207,7 @@ private fun DebugTab(requestPerm: () -> Unit) {
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton({ MODELS.forEach { if (it.id !in PagerCore.owned) PagerCore.owned.add(it.id) }; PagerCore.saveMeta() }, Modifier.weight(1f)) { Text("UNLOCK ALL") }
-            OutlinedButton({ PagerCore.owned.clear(); PagerCore.owned.add("pagertron"); PagerCore.equip("pagertron"); PagerCore.gems = 0; PagerCore.saveMeta() }, Modifier.weight(1f)) { Text("RESET") }
+            OutlinedButton({ PagerCore.owned.clear(); PagerCore.owned.add(DEFAULT_MODEL); PagerCore.equip(DEFAULT_MODEL); PagerCore.gems = 0; PagerCore.saveMeta() }, Modifier.weight(1f)) { Text("RESET") }
         }
     }
     Section("MEMORY") {

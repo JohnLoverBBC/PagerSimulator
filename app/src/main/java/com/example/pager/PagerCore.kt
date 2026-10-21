@@ -33,7 +33,9 @@ import java.util.Locale
 
 data class Msg(
     val id: Long, val from: String, val body: String,
-    val time: Long, val urgent: Boolean, val read: Boolean
+    val time: Long, val urgent: Boolean, val read: Boolean,
+    /** optional 128x256 1-bit image, base64 (see PagerImg) */
+    val img: String? = null
 )
 
 object PagerCore {
@@ -47,7 +49,11 @@ object PagerCore {
     // --- shop / models / settings ---
     var gems by mutableIntStateOf(0)
     val owned = mutableStateListOf<String>()
-    var modelId by mutableStateOf("pagertron")
+    var modelId by mutableStateOf(DEFAULT_MODEL)
+    /** 0 = follow the phone, 1 = portrait, 2 = landscape (manual switch) */
+    var orientMode by mutableIntStateOf(0)
+    /** CM Paper Pager: is the stylus out of its compartment? */
+    var stylusOut by mutableStateOf(false)
     var ledIdx by mutableIntStateOf(0)
     var kbLight by mutableIntStateOf(1)
     var lcdLight by mutableStateOf(false)
@@ -68,16 +74,17 @@ object PagerCore {
         prefs.edit().putInt("gems", gems).putString("owned", owned.joinToString(","))
             .putString("model", modelId).putInt("led", ledIdx).putInt("kb", kbLight)
             .putBoolean("lcd", lcdLight).putString("call", callsign).putString("uid", uid)
-            .putString("day", lastDay).apply()
+            .putString("day", lastDay).putInt("orient", orientMode).apply()
     }
 
     private fun loadMeta() {
         val p = prefs
         gems = p.getInt("gems", 0)
         owned.clear()
-        owned.addAll((p.getString("owned", "pagertron") ?: "pagertron").split(",").filter { it.isNotBlank() })
-        if ("pagertron" !in owned) owned.add("pagertron")
-        modelId = p.getString("model", "pagertron") ?: "pagertron"
+        owned.addAll((p.getString("owned", DEFAULT_MODEL) ?: DEFAULT_MODEL).split(",").filter { it.isNotBlank() })
+        if (DEFAULT_MODEL !in owned) owned.add(DEFAULT_MODEL)
+        modelId = p.getString("model", DEFAULT_MODEL) ?: DEFAULT_MODEL
+        orientMode = p.getInt("orient", 0)
         ledIdx = p.getInt("led", 0); kbLight = p.getInt("kb", 1); lcdLight = p.getBoolean("lcd", false)
         uid = p.getString("uid", null) ?: UUID.randomUUID().toString().take(6)
         callsign = p.getString("call", null) ?: ("PAGER-" + uid.take(3).uppercase())
@@ -99,7 +106,20 @@ object PagerCore {
         gems -= m.price; owned.add(m.id); equip(m.id); log("BOUGHT ${m.name}"); return true
     }
 
-    fun equip(id: String) { if (id in owned) { modelId = id; saveMeta() } }
+    fun equip(id: String) {
+        if (id !in owned) return
+        val old = model
+        modelId = id
+        // sideways devices turn the screen landscape; leaving one turns it back
+        if (model.landscapeNative) orientMode = 2
+        else if (old.landscapeNative && orientMode == 2) orientMode = 0
+        saveMeta()
+    }
+
+    /** 1 gem for every message sent or received. */
+    fun earnGem(why: String) {
+        gems++; saveMeta(); log("GEM +1 ($why) total $gems")
+    }
 
     lateinit var app: Context
         private set
@@ -137,12 +157,14 @@ object PagerCore {
             ContextCompat.checkSelfPermission(app, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
 
-    fun receive(from: String, body: String, urgent: Boolean) {
-        val m = Msg(System.currentTimeMillis(), from.ifBlank { "UNKNOWN" }, body, System.currentTimeMillis(), urgent, false)
+    fun receive(from: String, body: String, urgent: Boolean, img: String? = null) {
+        val text = if (img != null && body.isBlank()) "[IMAGE 128x256]" else body
+        val m = Msg(System.currentTimeMillis(), from.ifBlank { "UNKNOWN" }, text, System.currentTimeMillis(), urgent, false, img)
         messages.add(0, m)
         index = 0
         save()
-        log("RX from ${m.from}${if (urgent) " [URGENT]" else ""}")
+        log("RX from ${m.from}${if (urgent) " [URGENT]" else ""}${if (img != null) " [IMAGE]" else ""}")
+        earnGem("RX"); flash("+1 GEM")
         alert(m)
     }
 
@@ -225,7 +247,7 @@ object PagerCore {
         val arr = JSONArray()
         messages.forEach {
             arr.put(JSONObject().put("id", it.id).put("from", it.from).put("body", it.body)
-                .put("time", it.time).put("urgent", it.urgent).put("read", it.read))
+                .put("time", it.time).put("urgent", it.urgent).put("read", it.read).put("img", it.img ?: ""))
         }
         app.getSharedPreferences("pager", Context.MODE_PRIVATE).edit().putString("msgs", arr.toString()).apply()
     }
@@ -237,7 +259,8 @@ object PagerCore {
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
                 messages.add(Msg(o.getLong("id"), o.getString("from"), o.getString("body"),
-                    o.getLong("time"), o.getBoolean("urgent"), o.getBoolean("read")))
+                    o.getLong("time"), o.getBoolean("urgent"), o.getBoolean("read"),
+                    o.optString("img", "").takeIf { s2 -> s2.isNotEmpty() }))
             }
         } catch (_: Exception) {}
     }

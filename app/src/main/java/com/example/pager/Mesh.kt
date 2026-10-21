@@ -114,7 +114,8 @@ object Mesh {
             while (seen.size > 500) seen.remove(seen.first())
             val to = o.getString("to"); val ttl = o.getInt("ttl")
             val mine = to == "ALL" || to.equals(PagerCore.callsign, true)
-            if (mine) PagerCore.receive(o.getString("from"), o.getString("body"), o.optBoolean("urgent"))
+            if (mine) PagerCore.receive(o.getString("from"), o.getString("body"), o.optBoolean("urgent"),
+                o.optString("img", "").takeIf { it.isNotEmpty() })
             if ((to == "ALL" || !mine) && ttl > 0) {
                 o.put("ttl", ttl - 1)
                 val targets = peers.keys.filter { it != from }
@@ -126,20 +127,24 @@ object Mesh {
         } catch (e: Exception) { PagerCore.log("BAD PACKET ${e.message}") }
     }
 
-    fun send(to: String, body: String, urgent: Boolean = false): String {
+    fun send(to: String, body: String, urgent: Boolean = false, img: String? = null): String {
         if (!on) return "RADIO OFF"
         if (peers.isEmpty()) return "NO PEERS"
         val o = JSONObject().put("id", UUID.randomUUID().toString()).put("from", PagerCore.callsign)
             .put("to", to).put("body", body).put("ttl", 5).put("urgent", urgent)
+        if (img != null) o.put("img", img)
         seen.add(o.getString("id"))
         client?.sendPayload(peers.keys.toList(), Payload.fromBytes(o.toString().toByteArray()))
-        PagerCore.log("TX >$to: $body")
-        return "SENT>$to (${peers.size} link)"
+        PagerCore.log("TX >$to: ${if (img != null) "[IMAGE 128x256]" else body}")
+        PagerCore.earnGem("TX")
+        return "SENT>$to (${peers.size} link) +1 GEM"
     }
 
     /** Debug: fake an incoming mesh packet without any hardware. */
-    fun inject(from: String, to: String, body: String, ttl: Int) {
-        handle(JSONObject().put("id", UUID.randomUUID().toString()).put("from", from)
-            .put("to", to).put("body", body).put("ttl", ttl).toString(), null)
+    fun inject(from: String, to: String, body: String, ttl: Int, img: String? = null) {
+        val o = JSONObject().put("id", UUID.randomUUID().toString()).put("from", from)
+            .put("to", to).put("body", body).put("ttl", ttl)
+        if (img != null) o.put("img", img)
+        handle(o.toString(), null)
     }
 }

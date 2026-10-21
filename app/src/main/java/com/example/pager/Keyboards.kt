@@ -87,6 +87,8 @@ fun PagerKeyboard(m: Model, light: Int, onKey: (KeyEv) -> Unit) {
         KB.ALPHA -> AlphaGrid(m, onKey)
         KB.QWERTY -> Qwerty(m, light, onKey)
         KB.NUMERIC -> Numeric(m, onKey)
+        KB.WIDE_QWERTY -> WideQwerty(m, light, onKey)
+        KB.PAPER -> {}   // no keys: the Paper Pager is written on with a stylus
     }
 }
 
@@ -164,5 +166,25 @@ private fun Numeric(m: Model, onKey: (KeyEv) -> Unit) {
         val rows = listOf("123".map { d(it) }, "456".map { d(it) }, "789".map { d(it) },
             listOf(K("CLR", act = { onKey(KeyEv.Back) }), d('0'), K("SEND", act = { onKey(KeyEv.Enter) })))
         Grid(rows, keyW * 0.4f, (keyW.value * 0.22f).sp, m, gap = 8.dp)
+    }
+}
+
+/** Full-size landscape board for the CM P1. `light` > 0 gives the keys the green backlight tint. */
+@Composable
+private fun WideQwerty(m: Model, light: Int, onKey: (KeyEv) -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        fun ch(c: Char) = K(c.toString(), act = { onKey(KeyEv.Ch(c)) })
+        fun sp(w: Float) = K("", w, spacer = true)
+        val rows = listOf(
+            "1234567890".map { ch(it) } + K("DEL", 2f, act = { onKey(KeyEv.Back) }),
+            "QWERTYUIOP".map { ch(it) } + ch(',') + ch('.'),
+            listOf(sp(0.5f)) + "ASDFGHJKL".map { ch(it) } + K("ENTER", 2.5f, act = { onKey(KeyEv.Enter) }),
+            listOf(sp(1.5f)) + "ZXCVBNM".map { ch(it) } + ch('\'') + ch('?') + sp(1.5f),
+            listOf(sp(1.5f), K("SPACE", 9f, act = { onKey(KeyEv.Ch(' ')) }), sp(1.5f))
+        )
+        val lit = light > 0
+        Grid(rows, 28.dp, 13.sp, m,
+            text = if (lit) Color(0xFFD6F5A0) else m.keyText,
+            glow = if (lit) Color(0xFF9BE04A) else null, glowR = 10f, gap = 3.dp)
     }
 }

@@ -1,6 +1,7 @@
 package com.example.pager
 
 import android.Manifest
+import android.content.pm.ActivityInfo
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -22,6 +23,14 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(Unit) {
                 if (Build.VERSION.SDK_INT >= 33 && !PagerCore.hasNotifPermission())
                     launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            // manual rotate switch (the ROT key on every pager, or FUNC > DISPLAY): works even with the phone's rotation lock on
+            LaunchedEffect(PagerCore.orientMode) {
+                requestedOrientation = when (PagerCore.orientMode) {
+                    1 -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                    2 -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                }
             }
             BackHandler(enabled = func) { func = false }
             if (func) FuncScreen(
