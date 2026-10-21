@@ -26,6 +26,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.UUID
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -43,7 +44,65 @@ object PagerCore {
     var vibrate by mutableStateOf(true)
     var systemNotify by mutableStateOf(true)
 
-    private lateinit var app: Context
+    // --- shop / models / settings ---
+    var gems by mutableIntStateOf(0)
+    val owned = mutableStateListOf<String>()
+    var modelId by mutableStateOf("pagertron")
+    var ledIdx by mutableIntStateOf(0)
+    var kbLight by mutableIntStateOf(1)
+    var lcdLight by mutableStateOf(false)
+    var callsign by mutableStateOf("PAGER")
+    var uid = ""
+    var flashMsg by mutableStateOf<String?>(null)
+    private var lastDay = ""
+    val model: Model get() = MODELS.firstOrNull { it.id == modelId } ?: MODELS[0]
+    private val prefs get() = app.getSharedPreferences("pager", Context.MODE_PRIVATE)
+    private val clearFlash = Runnable { flashMsg = null }
+
+    fun flash(s: String) {
+        flashMsg = s
+        main.removeCallbacks(clearFlash); main.postDelayed(clearFlash, 3000)
+    }
+
+    fun saveMeta() {
+        prefs.edit().putInt("gems", gems).putString("owned", owned.joinToString(","))
+            .putString("model", modelId).putInt("led", ledIdx).putInt("kb", kbLight)
+            .putBoolean("lcd", lcdLight).putString("call", callsign).putString("uid", uid)
+            .putString("day", lastDay).apply()
+    }
+
+    private fun loadMeta() {
+        val p = prefs
+        gems = p.getInt("gems", 0)
+        owned.clear()
+        owned.addAll((p.getString("owned", "pagertron") ?: "pagertron").split(",").filter { it.isNotBlank() })
+        if ("pagertron" !in owned) owned.add("pagertron")
+        modelId = p.getString("model", "pagertron") ?: "pagertron"
+        ledIdx = p.getInt("led", 0); kbLight = p.getInt("kb", 1); lcdLight = p.getBoolean("lcd", false)
+        uid = p.getString("uid", null) ?: UUID.randomUUID().toString().take(6)
+        callsign = p.getString("call", null) ?: ("PAGER-" + uid.take(3).uppercase())
+        lastDay = p.getString("day", "") ?: ""
+    }
+
+    fun checkDaily() {
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        if (lastDay != today) {
+            lastDay = today; gems++; saveMeta()
+            log("DAILY GEM +1 (total $gems)"); flash("+1 GEM  DAILY BONUS")
+        }
+    }
+
+    fun resetDaily() { lastDay = ""; checkDaily() }
+
+    fun buy(m: Model): Boolean {
+        if (m.id in owned || gems < m.price) return false
+        gems -= m.price; owned.add(m.id); equip(m.id); log("BOUGHT ${m.name}"); return true
+    }
+
+    fun equip(id: String) { if (id in owned) { modelId = id; saveMeta() } }
+
+    lateinit var app: Context
+        private set
     private val main = Handler(Looper.getMainLooper())
     private const val CH_NORMAL = "pager_normal"
     private const val CH_URGENT = "pager_urgent"
@@ -61,8 +120,10 @@ object PagerCore {
                 vibrationPattern = longArrayOf(0, 300, 100, 300, 100, 600)
             }
         )
+        loadMeta()
         load()
         log("PAGER ONLINE")
+        checkDaily()
     }
 
     fun log(s: String) {

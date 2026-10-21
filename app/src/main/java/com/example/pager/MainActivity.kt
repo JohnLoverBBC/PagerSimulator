@@ -15,7 +15,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         PagerCore.init(this)
         setContent {
-            var debug by remember { mutableStateOf(false) }
+            var func by remember { mutableStateOf(false) }
             val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
                 PagerCore.log("POST_NOTIFICATIONS ${if (it) "GRANTED" else "DENIED"}")
             }
@@ -23,11 +23,16 @@ class MainActivity : ComponentActivity() {
                 if (Build.VERSION.SDK_INT >= 33 && !PagerCore.hasNotifPermission())
                     launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
-            BackHandler(enabled = debug) { debug = false }
-            if (debug) DebugScreen(
-                onClose = { debug = false },
+            BackHandler(enabled = func) { func = false }
+            if (func) FuncScreen(
+                onClose = { func = false },
                 requestPerm = { if (Build.VERSION.SDK_INT >= 33) launcher.launch(Manifest.permission.POST_NOTIFICATIONS) }
-            ) else PagerScreen(onDebug = { debug = true })
+            ) else PagerScreen(onFunc = { func = true })
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        PagerCore.checkDaily()
     }
 }

@@ -1,4 +1,3 @@
-# Pagertron 3000
-1. Create a GitHub repo, push this folder to it.
-2. Actions tab -> "Build APK" runs automatically (or Run workflow).
-3. Download the `pager-debug-apk` artifact, unzip, install the .apk.
+# Pagertron
+Push to GitHub -> Actions builds `pager-debug-apk`. Needs Google Play services on the phone (for the mesh radio).
+Two phones with the app + Radio ON (FUNC > RADIO) will link automatically.
