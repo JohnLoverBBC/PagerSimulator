@@ -24,12 +24,11 @@ class MainActivity : ComponentActivity() {
                 if (Build.VERSION.SDK_INT >= 33 && !PagerCore.hasNotifPermission())
                     launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
-            // manual rotate switch (the ROT key on every pager, or FUNC > DISPLAY): works even with the phone's rotation lock on
-            LaunchedEffect(PagerCore.orientMode) {
-                requestedOrientation = when (PagerCore.orientMode) {
-                    1 -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-                    2 -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                    else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            LaunchedEffect(PagerCore.orient) {
+                requestedOrientation = when (PagerCore.orient) {
+                    1 -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    2 -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                    else -> ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
                 }
             }
             BackHandler(enabled = func) { func = false }

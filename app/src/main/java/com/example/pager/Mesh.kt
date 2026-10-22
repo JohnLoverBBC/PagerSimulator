@@ -24,7 +24,7 @@ import com.google.android.gms.nearby.connection.Strategy
 import org.json.JSONObject
 import java.util.UUID
 
-/** Flood-routed mesh over Nearby Connections (BLE + Bluetooth + Wi-Fi). */
+/** Flood-routed mesh over Nearby Connections (BLE + Bluetooth + Wi-Fi). Carries text and 128x256 images. */
 object Mesh {
     private const val SERVICE = "com.example.pager.mesh"
     private var client: ConnectionsClient? = null
@@ -34,6 +34,7 @@ object Mesh {
     var on by mutableStateOf(false)
     var status by mutableStateOf("RADIO OFF")
     var relayed by mutableIntStateOf(0)
+    var loopback by mutableStateOf(false)               // debug: deliver sends to yourself when no peers
 
     fun permissions(): List<String> = when {
         Build.VERSION.SDK_INT >= 33 -> listOf(
@@ -71,8 +72,7 @@ object Mesh {
     private val discovery = object : EndpointDiscoveryCallback() {
         override fun onEndpointFound(id: String, info: DiscoveredEndpointInfo) {
             val theirUid = info.endpointName.substringAfter('|', "")
-            // only the lower uid initiates, avoids both sides colliding
-            if (PagerCore.uid < theirUid && !peers.containsKey(id)) {
+            if (PagerCore.uid < theirUid && !peers.containsKey(id)) {   // lower uid initiates
                 client?.requestConnection(myName(), id, lifecycle)
                     ?.addOnFailureListener { PagerCore.log("CONN REQ FAIL ${it.message}") }
             }
@@ -100,9 +100,7 @@ object Mesh {
     }
 
     private val payloads = object : PayloadCallback() {
-        override fun onPayloadReceived(id: String, p: Payload) {
-            p.asBytes()?.let { handle(String(it), id) }
-        }
+        override fun onPayloadReceived(id: String, p: Payload) { p.asBytes()?.let { handle(String(it), id) } }
         override fun onPayloadTransferUpdate(id: String, u: PayloadTransferUpdate) {}
     }
 
@@ -115,7 +113,7 @@ object Mesh {
             val to = o.getString("to"); val ttl = o.getInt("ttl")
             val mine = to == "ALL" || to.equals(PagerCore.callsign, true)
             if (mine) PagerCore.receive(o.getString("from"), o.getString("body"), o.optBoolean("urgent"),
-                o.optString("img", "").takeIf { it.isNotEmpty() })
+                o.optString("img", "").ifEmpty { null })
             if ((to == "ALL" || !mine) && ttl > 0) {
                 o.put("ttl", ttl - 1)
                 val targets = peers.keys.filter { it != from }
@@ -127,7 +125,13 @@ object Mesh {
         } catch (e: Exception) { PagerCore.log("BAD PACKET ${e.message}") }
     }
 
+    /** Returns a status string starting with SENT on success. Each successful send earns a gem. */
     fun send(to: String, body: String, urgent: Boolean = false, img: String? = null): String {
+        if (loopback && (!on || peers.isEmpty())) {
+            PagerCore.receive(PagerCore.callsign, body, urgent, img)
+            PagerCore.addGem()
+            return "SENT>LOOP  +1 GEM"
+        }
         if (!on) return "RADIO OFF"
         if (peers.isEmpty()) return "NO PEERS"
         val o = JSONObject().put("id", UUID.randomUUID().toString()).put("from", PagerCore.callsign)
@@ -135,9 +139,9 @@ object Mesh {
         if (img != null) o.put("img", img)
         seen.add(o.getString("id"))
         client?.sendPayload(peers.keys.toList(), Payload.fromBytes(o.toString().toByteArray()))
-        PagerCore.log("TX >$to: ${if (img != null) "[IMAGE 128x256]" else body}")
-        PagerCore.earnGem("TX")
-        return "SENT>$to (${peers.size} link) +1 GEM"
+        PagerCore.addGem()
+        PagerCore.log("TX >$to: $body${if (img != null) " [IMG]" else ""}  +1 gem")
+        return "SENT>$to  +1 GEM"
     }
 
     /** Debug: fake an incoming mesh packet without any hardware. */

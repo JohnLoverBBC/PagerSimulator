@@ -79,16 +79,15 @@ private fun Grid(
     }
 }
 
-/** Each model gets its own keyboard. Everything scales with the width available. */
+/** Each model has its own keyboard. Keys scale with the width available and never exceed maxKeyH. */
 @Composable
-fun PagerKeyboard(m: Model, light: Int, onKey: (KeyEv) -> Unit) {
+fun PagerKeyboard(m: Model, light: Int, maxKeyH: Dp, onKey: (KeyEv) -> Unit) {
     when (m.kb) {
-        KB.MULTITAP -> Multitap(m, onKey)
-        KB.ALPHA -> AlphaGrid(m, onKey)
-        KB.QWERTY -> Qwerty(m, light, onKey)
-        KB.NUMERIC -> Numeric(m, onKey)
-        KB.WIDE_QWERTY -> WideQwerty(m, light, onKey)
-        KB.PAPER -> {}   // no keys: the Paper Pager is written on with a stylus
+        KB.NONE -> {}
+        KB.MULTITAP -> Multitap(m, maxKeyH, onKey)
+        KB.ALPHA -> AlphaGrid(m, maxKeyH, onKey)
+        KB.QWERTY -> Qwerty(m, light, maxKeyH, onKey)
+        KB.NUMERIC -> Numeric(m, maxKeyH, onKey)
     }
 }
 
@@ -96,7 +95,7 @@ private val MT = mapOf('1' to ".,?!1", '2' to "ABC2", '3' to "DEF3", '4' to "GHI
     '6' to "MNO6", '7' to "PQRS7", '8' to "TUV8", '9' to "WXYZ9", '0' to " 0")
 
 @Composable
-private fun Multitap(m: Model, onKey: (KeyEv) -> Unit) {
+private fun Multitap(m: Model, maxKeyH: Dp, onKey: (KeyEv) -> Unit) {
     var last by remember { mutableStateOf('\u0000') }
     var lastT by remember { mutableLongStateOf(0L) }
     var idx by remember { mutableIntStateOf(0) }
@@ -120,12 +119,12 @@ private fun Multitap(m: Model, onKey: (KeyEv) -> Unit) {
                 }
             }
         }
-        Grid(rows, keyW * 0.42f, (keyW.value * 0.2f).sp, m, gap = 6.dp)
+        Grid(rows, minOf(keyW * 0.42f, maxKeyH), (keyW.value * 0.2f).sp, m, gap = 6.dp)
     }
 }
 
 @Composable
-private fun AlphaGrid(m: Model, onKey: (KeyEv) -> Unit) {
+private fun AlphaGrid(m: Model, maxKeyH: Dp, onKey: (KeyEv) -> Unit) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val keyW = maxWidth / 7
         fun ch(c: Char) = K(c.toString(), act = { onKey(KeyEv.Ch(c)) })
@@ -134,12 +133,13 @@ private fun AlphaGrid(m: Model, onKey: (KeyEv) -> Unit) {
             listOf(listOf(K("DEL", 2f, act = { onKey(KeyEv.Back) }),
                 K("SPACE", 3f, act = { onKey(KeyEv.Ch(' ')) }),
                 K("SEND", 2f, act = { onKey(KeyEv.Enter) })))
-        Grid(rows, keyW * 0.75f, (keyW.value * 0.38f).sp, m, gap = 4.dp)
+        val h = minOf(keyW * 0.75f, maxKeyH)
+        Grid(rows, h, minOf(keyW.value * 0.38f, h.value * 0.5f).sp, m, gap = 4.dp)
     }
 }
 
 @Composable
-private fun Qwerty(m: Model, light: Int, onKey: (KeyEv) -> Unit) {
+private fun Qwerty(m: Model, light: Int, maxKeyH: Dp, onKey: (KeyEv) -> Unit) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val keyW = maxWidth / 10
         fun ch(c: Char) = K(c.toString(), act = { onKey(KeyEv.Ch(c)) })
@@ -152,39 +152,20 @@ private fun Qwerty(m: Model, light: Int, onKey: (KeyEv) -> Unit) {
                 K("ENTER", 3f, act = { onKey(KeyEv.Enter) }))
         )
         val lit = light > 0
-        Grid(rows, keyW * 1.1f, (keyW.value * 0.42f).sp, m,
-            text = if (lit) Color(0xFF9FE8FF) else m.keyText.copy(alpha = 0.55f),
-            glow = if (lit) Color(0xFF5FD4FF) else null, glowR = if (light >= 2) 22f else 8f, gap = 4.dp)
+        val h = minOf(keyW * 1.1f, maxKeyH)
+        Grid(rows, h, minOf(keyW.value * 0.42f, h.value * 0.5f).sp, m,
+            text = if (lit) m.glow else m.keyText.copy(alpha = 0.6f),
+            glow = if (lit) m.glow else null, glowR = if (light >= 2) 22f else 8f, gap = 4.dp)
     }
 }
 
 @Composable
-private fun Numeric(m: Model, onKey: (KeyEv) -> Unit) {
+private fun Numeric(m: Model, maxKeyH: Dp, onKey: (KeyEv) -> Unit) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val keyW = maxWidth / 3
         fun d(c: Char) = K(c.toString(), act = { onKey(KeyEv.Ch(c)) })
         val rows = listOf("123".map { d(it) }, "456".map { d(it) }, "789".map { d(it) },
             listOf(K("CLR", act = { onKey(KeyEv.Back) }), d('0'), K("SEND", act = { onKey(KeyEv.Enter) })))
-        Grid(rows, keyW * 0.4f, (keyW.value * 0.22f).sp, m, gap = 8.dp)
-    }
-}
-
-/** Full-size landscape board for the CM P1. `light` > 0 gives the keys the green backlight tint. */
-@Composable
-private fun WideQwerty(m: Model, light: Int, onKey: (KeyEv) -> Unit) {
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        fun ch(c: Char) = K(c.toString(), act = { onKey(KeyEv.Ch(c)) })
-        fun sp(w: Float) = K("", w, spacer = true)
-        val rows = listOf(
-            "1234567890".map { ch(it) } + K("DEL", 2f, act = { onKey(KeyEv.Back) }),
-            "QWERTYUIOP".map { ch(it) } + ch(',') + ch('.'),
-            listOf(sp(0.5f)) + "ASDFGHJKL".map { ch(it) } + K("ENTER", 2.5f, act = { onKey(KeyEv.Enter) }),
-            listOf(sp(1.5f)) + "ZXCVBNM".map { ch(it) } + ch('\'') + ch('?') + sp(1.5f),
-            listOf(sp(1.5f), K("SPACE", 9f, act = { onKey(KeyEv.Ch(' ')) }), sp(1.5f))
-        )
-        val lit = light > 0
-        Grid(rows, 28.dp, 13.sp, m,
-            text = if (lit) Color(0xFFD6F5A0) else m.keyText,
-            glow = if (lit) Color(0xFF9BE04A) else null, glowR = 10f, gap = 3.dp)
+        Grid(rows, minOf(keyW * 0.4f, maxKeyH), (keyW.value * 0.22f).sp, m, gap = 8.dp)
     }
 }
